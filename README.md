@@ -1,6 +1,6 @@
 # ROBAM / ROKI 老板电器 Home Assistant 集成
 
-[![Validate & Test](https://github.com/darkaccount/ha-robam-roki/actions/workflows/validate.yml/badge.svg)](https://github.com/darkaccount/ha-robam-roki/actions/workflows/validate.yml)
+[![Validate & Test](https://github.com/shinnaluo/ha-robam-roki/actions/workflows/validate.yml/badge.svg)](https://github.com/shinnaluo/ha-robam-roki/actions/workflows/validate.yml)
 
 将老板电器（ROBAM / ROKI）App 账号下的抽油烟机等智能厨电接入 Home Assistant。
 本项目为开源社区**非官方**集成，支持云端双通道（REST / MQTT）与实时推送，开箱即用。
@@ -23,7 +23,7 @@
 
 1. 打开 Home Assistant 的 **HACS** → **集成**。
 2. 点击右上角菜单 → **自定义存储库 (Custom repositories)**。
-3. 存储库填写：`https://github.com/darkaccount/ha-robam-roki`，类别选择 **集成 (Integration)**。
+3. 存储库填写：`https://github.com/shinnaluo/ha-robam-roki`，类别选择 **集成 (Integration)**。
 4. 在 HACS 中搜索 **ROBAM ROKI** 并点击下载安装。
 5. 重启 Home Assistant。
 
@@ -83,7 +83,7 @@
 如果您拥有其他型号的老板油烟机或灶具：
 1. 在 Home Assistant 进入 **设置** → **设备与服务** → **ROBAM ROKI** → 点击设备进入详情。
 2. 点击 **下载诊断信息**（该文件已对账号 Token、密码、设备唯一码等私密信息进行自动脱敏）。
-3. 前往 GitHub [提交新设备支持 Issue](https://github.com/darkaccount/ha-robam-roki/issues/new?template=device_support.yml)，粘贴诊断信息即可。
+3. 前往 GitHub [提交新设备支持 Issue](https://github.com/shinnaluo/ha-robam-roki/issues/new?template=device_support.yml)，粘贴诊断信息即可。
 
 ## 免责声明
 
