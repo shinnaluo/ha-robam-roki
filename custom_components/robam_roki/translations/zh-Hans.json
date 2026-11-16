@@ -169,17 +169,171 @@
       }
     }
   },
+  "services": {
+    "draft_profile": {
+      "name": "生成 profile 草稿",
+      "description": "用已缓存的设备属性生成 profile 草稿与 fixture；若刚结束学习模式，会自动带上可测试的 controls。不会向设备发送任何命令，也不会请求云端。",
+      "fields": {
+        "device_id": {
+          "name": "设备",
+          "description": "从设备注册表选择一个 ROBAM ROKI 设备（与 guid 二选一）。"
+        },
+        "guid": {
+          "name": "设备 GUID",
+          "description": "直接指定设备 GUID（与 device_id 二选一，一般不需要）。"
+        },
+        "write_fixture": {
+          "name": "同时写入 fixture",
+          "description": "为回归测试保存同一份 fixture（默认开启）。"
+        }
+      }
+    },
+    "learn_start": {
+      "name": "开始学习新设备控制",
+      "description": "被动记录官方 App 发往该设备的命令，最多 10 分钟。学习期间不会向设备发送任何命令。",
+      "fields": {
+        "device_id": {
+          "name": "设备",
+          "description": "要学习的设备（与 guid 二选一）。"
+        },
+        "guid": {
+          "name": "设备 GUID",
+          "description": "直接指定设备 GUID（与 device_id 二选一）。"
+        },
+        "duration": {
+          "name": "学习时长（秒）",
+          "description": "默认 300，上限 600。"
+        }
+      }
+    },
+    "learn_stop": {
+      "name": "结束学习",
+      "description": "结束当前学习会话，并返回记录到的动作列表与观察到的属性变化。",
+      "fields": {
+        "device_id": {
+          "name": "设备（可选）",
+          "description": "校验会话是否属于该设备。"
+        }
+      }
+    },
+    "export_profile": {
+      "name": "导出 profile（.md）",
+      "description": "把当前生效的用户 profile 与 fixture 合成一份 Markdown（五个小节、两个标记块），方便贴到 GitHub issue 或 PR。只输出 .md，不会写 yaml/json，也不会向设备发送任何命令。",
+      "fields": {
+        "device_id": {
+          "name": "设备",
+          "description": "从设备注册表选择一个 ROBAM ROKI 设备（与 guid 二选一）。"
+        },
+        "guid": {
+          "name": "设备 GUID",
+          "description": "直接指定设备 GUID（与 device_id 二选一，一般不需要）。"
+        }
+      }
+    }
+  },
+  "issues": {
+    "profile_parse_failed": {
+      "title": "profile 无法解析",
+      "description": "文件 {path} 无法加载：{error}\n\n修复该文件后，此提示会自动消失。"
+    },
+    "profile_conflict": {
+      "title": "profile 匹配冲突",
+      "description": "设备 {device}（dc={dc}）同时被多个 profile 等权匹配：{profiles}。\n\n请让其中一个 match 更具体（例如补上 dt），或删除多余的文件。"
+    },
+    "unverified_controls_enabled": {
+      "title": "已允许未验证的控制",
+      "description": "选项「允许未验证的控制」已开启：来自学习模式或手写的未验证命令会以实体形式出现，可能在真机上产生非预期动作。\n\n请逐个对照官方 App 验证；验证完成后把 profile 里的 verified 改为 true，并关闭此选项。"
+    }
+  },
   "options": {
     "step": {
       "init": {
         "title": "ROKI 选项",
+        "menu_options": {
+          "general": "常规设置",
+          "learn": "1. 学习新设备控制",
+          "draft": "2. 生成草稿",
+          "export": "3. 导出贡献包",
+          "cleanup": "4. 清理草稿"
+        }
+      },
+      "general": {
+        "title": "常规设置",
         "data": {
           "levels": "档位列表（逗号分隔）",
           "max_level": "未知型号的档位数量（2-6）",
           "scan_interval": "轮询间隔（秒）",
-          "enable_sse": "启用实时推送（SSE/MQTT）"
+          "enable_sse": "启用实时推送（SSE/MQTT）",
+          "countdown_auto_off": "倒计时结束后自动关机（设备本身只会蜂鸣提醒）",
+          "allow_unverified_controls": "允许未验证的控制（实验性）"
+        }
+      },
+      "learn": {
+        "title": "1. 学习新设备控制",
+        "description": "当前学习会话：{status}\n\n先选设备与时长、动作选「开始」，然后用官方 App 操作要接入的功能。学习时长最长 600 秒，到时间会自动结束，不需要手动停止；想提前结束就回到这里选「结束」。\n\n结束这一步不会写文件，请回菜单选「2. 生成草稿」。学习期间不会向设备发送任何命令。",
+        "data": {
+          "device_id": "设备",
+          "duration": "学习时长（秒，最长 600）",
+          "action": "动作（开始 / 结束）"
+        }
+      },
+      "draft": {
+        "title": "2. 生成草稿",
+        "description": "{learned}\n\n选设备后会生成 draft 开头的 profile 草稿（同名文件自动加 -2/-3，绝不覆盖旧文件），并在下一步确认怎么生效。",
+        "data": {
+          "device_id": "设备"
+        }
+      },
+      "draft_confirm": {
+        "title": "草稿已生成，确认下一步",
+        "description": "已写入：{file}\n{note}\n\n{controls}\n\n「允许未验证的控制」未开启：学到的按钮不会出现。勾选下面的选项可以现在开启并重载；这会影响其它设备的未验证控制。",
+        "data": {
+          "enable_unverified_controls": "开启「允许未验证的控制」并立即重载（会影响其它设备）",
+          "reload_now": "现在重载集成让草稿生效"
+        }
+      },
+      "draft_confirm_enabled": {
+        "title": "草稿已生成，确认下一步",
+        "description": "已写入：{file}\n{note}\n\n{controls}\n\n「允许未验证的控制」已开启：重载后学到的按钮即可使用。",
+        "data": {
+          "reload_now": "现在重载集成让草稿生效"
+        }
+      },
+      "export": {
+        "title": "3. 导出贡献包",
+        "description": "选设备后，把当前生效的用户 profile 与 fixture 合成一份 Markdown（只输出 .md，不写 yaml/json），持久通知里会给出文件路径。",
+        "data": {
+          "device_id": "设备"
+        }
+      },
+      "cleanup": {
+        "title": "4. 清理草稿",
+        "description": "生成的草稿文件：{drafts}\n\n一次学习还会留下 fixture 与导出包：\n- fixture（fixtures 目录）：{fixtures}\n- 导出包（exports 目录）：{exports}\n\n勾选要删除的项目，不勾的保持原样；手写的 profile 永远不会被删除。",
+        "data": {
+          "remove_drafts": "删除草稿（draft-*.yaml）",
+          "remove_fixtures": "删除 fixture（fixtures/*.json）",
+          "remove_exports": "删除导出包（exports/*.md）"
         }
       }
+    },
+    "error": {
+      "invalid_levels": "请输入用逗号分隔的正整数档位，例如 1,2,3,6",
+      "device_required": "请选择设备"
+    },
+    "abort": {
+      "learn_started": "已开始学习：现在用官方 App 操作要接入的功能。最长 600 秒后自动结束，也可以回到这里手动提前结束。",
+      "learn_stopped": "已结束学习，共记录 {count} 个动作。请回到菜单选择「2. 生成草稿」。",
+      "learn_failed": "学习操作失败：可能已有其它学习会话在进行，详见 Home Assistant 日志。",
+      "draft_failed": "生成草稿失败：请确认集成已加载、该设备有缓存属性，详见 Home Assistant 日志。",
+      "draft_enabled": "已开启「允许未验证的控制」并重载集成，草稿 {file} 已生效。",
+      "draft_reloaded": "草稿 {file} 已生效（集成已重载）。",
+      "draft_written": "草稿 {file} 已写入：请手动重载集成后查看实体。",
+      "export_done": "导出完成：文件路径见持久通知。把这份 .md 贴到 /issues/new?template=device_support.yml 或直接提 PR。",
+      "export_no_profile": "该设备还没有用户 profile：先用「2. 生成草稿」。",
+      "export_builtin": "该设备已由内置 profile 支持：请直接提 issue 说明问题，不需要导出 profile。",
+      "export_failed": "导出失败，详见 Home Assistant 日志。",
+      "drafts_removed": "已删除：草稿 {drafts} 个、fixture {fixtures} 个、导出包 {exports} 个。相关按钮实体如果变为不可用，可在「设置 → 实体」里手动删除。",
+      "drafts_kept": "未勾选任何项目，没有删除任何文件。"
     }
   }
 }

@@ -26,9 +26,15 @@ from .const import (
     resolve_levels,
 )
 from .coordinator import RokiCoordinator
+from .devices import get_driver_for_device
+from .devices.base import allowed_capabilities, experimental_attributes
 from .entity import RokiEntity
 
 _LOGGER = logging.getLogger(__name__)
+
+# Capability contract for this platform: a gear list needs selectable gears.
+# The 关档 entry additionally needs the power command (see "options").
+_REQUIRED_CAPABILITIES = frozenset({"level"})
 
 OFF_OPTION = "关档"
 
@@ -42,7 +48,10 @@ async def async_setup_entry(
     async_add_entities(
         RokiHoodGearSelect(coordinator, device)
         for device in coordinator.devices
-        if str(device.get("dc", "")).upper() in ("", "RYYJ")
+        if _REQUIRED_CAPABILITIES
+        <= allowed_capabilities(
+            get_driver_for_device(coordinator, device), coordinator
+        )
     )
 
 
@@ -67,8 +76,29 @@ class RokiHoodGearSelect(RokiEntity, SelectEntity):
         return resolve_levels(self.model_code, option, max_level)
 
     @property
+    def _supports_power(self) -> bool:
+        """Whether the driver behind this entity can switch the hood off.
+
+        The base entity already resolved the driver, so the capability is
+        read from it rather than guessed.  Without capability data (the
+        offline test harness swaps the base class for a lighter stand-in
+        that carries no driver) the historical 关档 entry is kept, which is
+        what every real hood offers.
+        """
+        driver = getattr(self, "driver", None)
+        capabilities = getattr(driver, "capabilities", None)
+        if capabilities is None:
+            return True
+        return "power" in capabilities
+
+    @property
     def options(self) -> list[str]:
-        return [OFF_OPTION, *level_names_for(self.levels)]
+        # 关档 maps onto the power command, so it is only offered when the
+        # device advertises that capability; a hood always does.
+        gears = level_names_for(self.levels)
+        if self._supports_power:
+            return [OFF_OPTION, *gears]
+        return gears
 
     # -- state ------------------------------------------------------------
 
@@ -92,12 +122,20 @@ class RokiHoodGearSelect(RokiEntity, SelectEntity):
             return None
         return level_name(level, self.levels)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return experimental_attributes(
+            getattr(self, "driver", None), ("level", "power")
+        )
+
     # -- commands ---------------------------------------------------------
 
     async def async_select_option(self, option: str) -> None:
         if option == OFF_OPTION:
             try:
-                await self.coordinator.async_set_power(self._device_id, False)
+                await self.coordinator.async_execute(
+                    self._device_id, "power", on=False
+                )
             except RokiAuthError as err:
                 raise HomeAssistantError(f"ROKI session expired: {err}") from err
             except RokiError as err:
@@ -118,8 +156,12 @@ class RokiHoodGearSelect(RokiEntity, SelectEntity):
         level = levels[names.index(option)]
         try:
             if not self.is_on:
-                await self.coordinator.async_set_power(self._device_id, True)
-            await self.coordinator.async_set_level(self._device_id, level)
+                await self.coordinator.async_execute(
+                    self._device_id, "power", on=True
+                )
+            await self.coordinator.async_execute(
+                self._device_id, "level", level=level
+            )
         except RokiAuthError as err:
             raise HomeAssistantError(f"ROKI session expired: {err}") from err
         except RokiError as err:

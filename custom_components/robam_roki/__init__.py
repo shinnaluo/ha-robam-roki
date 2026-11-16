@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import RokiAuthError, RokiClient, RokiError
@@ -28,11 +30,28 @@ from .const import (
     CONF_USER_ID,
     DEFAULT_ENABLE_SSE,
     DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
     PLATFORMS,
 )
 from .coordinator import RokiCoordinator
+from .profiles import (
+    SOURCE_BUILTIN,
+    SOURCE_USER,
+    FullProfile,
+    load_profile_dir,
+    resolve_extends,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+#: ``async_setup`` registers the integration-wide services, but the integration
+#: is configured through the UI only: YAML setup is rejected by this schema.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+#: Profiles shipped with the integration; replaced on every update.
+_BUILTIN_PROFILES_DIR = Path(__file__).parent / "profiles"
+#: User profiles, relative to the Home Assistant configuration directory.
+_USER_PROFILES_PATH = ("robam_roki", "profiles")
 
 
 @dataclass
@@ -45,6 +64,50 @@ class RokiRuntimeData:
 
 
 RokiConfigEntry = ConfigEntry
+
+
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+    """Register the integration-wide services.
+
+    Imported lazily so merely importing the package (as the offline tests do)
+    does not require the Home Assistant service/notification modules.
+    """
+    from .services import async_setup_services
+
+    await async_setup_services(hass)
+    return True
+
+
+def _load_profiles(hass: HomeAssistant) -> list[FullProfile]:
+    """Load the built-in and user profiles and resolve their extends chains.
+
+    Runs in the executor because it reads the filesystem.  The profile layer
+    only ever logs and skips a broken file, and this function still guards the
+    whole load, so adding a profile can never stop the integration from setting
+    up.
+    """
+    builtin_dir = _BUILTIN_PROFILES_DIR
+    user_dir = Path(hass.config.path(*_USER_PROFILES_PATH))
+    try:
+        builtin = load_profile_dir(builtin_dir, SOURCE_BUILTIN)
+        user = load_profile_dir(user_dir, SOURCE_USER)
+        resolved = resolve_extends([*builtin, *user])
+    except Exception as err:  # noqa: BLE001 - profiles must never break setup
+        _LOGGER.warning(
+            "profiles: could not be loaded (%s); continuing without", err
+        )
+        return []
+    # INFO on purpose: a user who put the directory in the wrong place can see
+    # where the integration actually looked and that nothing was found there.
+    user_label = str(user_dir) if user_dir.is_dir() else f"{user_dir} (missing)"
+    _LOGGER.info(
+        "profiles: builtin=%d user=%d (builtin=%s, user=%s)",
+        len(builtin),
+        len(user),
+        builtin_dir,
+        user_label,
+    )
+    return resolved
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: RokiConfigEntry) -> bool:
@@ -104,6 +167,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: RokiConfigEntry) -> bool
         scan_interval=int(options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)),
         enable_sse=bool(options.get(CONF_ENABLE_SSE, DEFAULT_ENABLE_SSE)),
     )
+
+    coordinator.profiles = await hass.async_add_executor_job(_load_profiles, hass)
+
+    # Surface fixable profile problems and the experimental-controls warning
+    # as repair issues.  A failure here must never stop the setup.
+    try:
+        from . import repairs
+
+        await repairs.async_refresh_issues(
+            hass,
+            coordinator,
+            user_dir=Path(hass.config.path(*_USER_PROFILES_PATH)),
+        )
+    except Exception as err:  # noqa: BLE001 - repairs are advisory
+        _LOGGER.debug("repairs: could not refresh issues: %s", err)
 
     await coordinator.async_config_entry_first_refresh()
     coordinator.async_start_push()

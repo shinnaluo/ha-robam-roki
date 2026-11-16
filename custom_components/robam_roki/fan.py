@@ -24,9 +24,16 @@ from .const import (
     resolve_levels,
 )
 from .coordinator import RokiCoordinator
+from .devices import get_driver_for_device
+from .devices.base import allowed_capabilities, experimental_attributes
 from .entity import RokiEntity
 
 _LOGGER = logging.getLogger(__name__)
+
+# Capability contract for this platform: a fan entity needs both a power
+# switch and a gear ladder.  Telemetry-only drivers expose neither, so they
+# never reach this platform -- the gate is the driver, not the category code.
+_REQUIRED_CAPABILITIES = frozenset({"power", "level"})
 
 
 async def async_setup_entry(
@@ -38,7 +45,10 @@ async def async_setup_entry(
     async_add_entities(
         RokiHoodFan(coordinator, device, entry.options.get(CONF_MAX_LEVEL))
         for device in coordinator.devices
-        if str(device.get("dc", "")).upper() in ("", "RYYJ")
+        if _REQUIRED_CAPABILITIES
+        <= allowed_capabilities(
+            get_driver_for_device(coordinator, device), coordinator
+        )
     )
 
 
@@ -162,8 +172,12 @@ class RokiHoodFan(RokiEntity, FanEntity):
         level = self._level_for_preset(preset_mode)
         try:
             if not self.is_on:
-                await self.coordinator.async_set_power(self._device_id, True)
-            await self.coordinator.async_set_level(self._device_id, level)
+                await self.coordinator.async_execute(
+                    self._device_id, "power", on=True
+                )
+            await self.coordinator.async_execute(
+                self._device_id, "level", level=level
+            )
         except RokiAuthError as err:
             raise HomeAssistantError(f"ROKI session expired: {err}") from err
         except RokiError as err:
@@ -183,7 +197,9 @@ class RokiHoodFan(RokiEntity, FanEntity):
     ) -> None:
         try:
             if not self.is_on:
-                await self.coordinator.async_set_power(self._device_id, True)
+                await self.coordinator.async_execute(
+                    self._device_id, "power", on=True
+                )
                 self.coordinator.async_apply(self._device_id, {"workStatus": 1})
             if preset_mode is not None:
                 await self.async_set_preset_mode(preset_mode)
@@ -197,7 +213,9 @@ class RokiHoodFan(RokiEntity, FanEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         try:
-            await self.coordinator.async_set_power(self._device_id, False)
+            await self.coordinator.async_execute(
+                self._device_id, "power", on=False
+            )
         except RokiAuthError as err:
             raise HomeAssistantError(f"ROKI session expired: {err}") from err
         except RokiError as err:
@@ -226,8 +244,12 @@ class RokiHoodFan(RokiEntity, FanEntity):
 
         try:
             if not self.is_on:
-                await self.coordinator.async_set_power(self._device_id, True)
-            await self.coordinator.async_set_level(self._device_id, level)
+                await self.coordinator.async_execute(
+                    self._device_id, "power", on=True
+                )
+            await self.coordinator.async_execute(
+                self._device_id, "level", level=level
+            )
         except RokiAuthError as err:
             raise HomeAssistantError(f"ROKI session expired: {err}") from err
         except RokiError as err:
@@ -251,7 +273,7 @@ class RokiHoodFan(RokiEntity, FanEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {
+        attributes = {
             "level": self.prop_int("level"),
             "levels": self.levels,
             "levels_source": self.levels_source,
@@ -260,3 +282,9 @@ class RokiHoodFan(RokiEntity, FanEntity):
             "fault_code": self.prop("faultCode", "fault_code"),
             "device_id": self._device_id,
         }
+        attributes.update(
+            experimental_attributes(
+                getattr(self, "driver", None), ("power", "level")
+            )
+        )
+        return attributes

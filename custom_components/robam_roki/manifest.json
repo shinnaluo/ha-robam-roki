@@ -1,6 +1,7 @@
 {
   "domain": "robam_roki",
   "name": "ROBAM ROKI",
+  "categories": ["appliances_cleaning", "water.water_treatment"],
   "codeowners": ["@shinnaluo"],
   "config_flow": true,
   "documentation": "https://github.com/shinnaluo/ha-robam-roki",
@@ -8,5 +9,5 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/shinnaluo/ha-robam-roki/issues",
   "loggers": ["custom_components.robam_roki"],
-  "version": "0.3.0"
+  "version": "0.5.0"
 }
